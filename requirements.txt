@@ -1,0 +1,12 @@
+aiofiles
+alembic
+click
+databases[sqlite]
+jinja2
+lnd-grpc
+lnurl
+pydantic
+qrcode[pil]
+starlette
+ujson
+uvicorn
