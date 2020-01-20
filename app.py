@@ -98,11 +98,11 @@ async def connect(request):
                 if res['is_used'] == False:
                     next(lnd_rpc.open_channel(
                         node_pubkey=req.remoteid,
-                        private=req.private,
+                        private=1 if config('LND_FORCE_PRIVATE', cast=bool, default=False) else req.private,  # noqa
                         local_funding_amount=res['funding_amount'],
                         push_sat=res['push_amount'],
-                        spend_unconfirmed=True,
-                        sat_per_byte=1))
+                        spend_unconfirmed=config('LND_SPEND_UNCONFIRMED', cast=bool, default=True),  # noqa
+                        sat_per_byte=config('LND_FEE_RATE', cast=int, default=None)))  # noqa
 
                     q = invites.update().where(invites.c.invite_code == req.k1) \
                         .values(
