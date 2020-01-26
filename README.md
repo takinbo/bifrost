@@ -5,14 +5,14 @@ the Python programming language.
 [Lnd](https://github.com/lightningnetwork/lnd/) is currently supported as the backend node for channel opening to other 
 wallets and nodes.
 
-Due to the low througput of the application, SQLite is database backend used to 
+Due to the low throughput of the application, SQLite is database backend used to 
 store invites and track usage. It should be trivial to change this if you know 
 what you're doing. Please see the `DATABASE_URL` parameter in the configuration 
 options below. Please note that you'll need to install the necessary packages to 
 support your chosen database backend.
 
 
-## Instalation of dependencies
+## Installation of dependencies
 
 To install all the required dependencies needed to run Bifrost, run the following 
 command. This may also be done within a `virtualenv`.
