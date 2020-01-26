@@ -8,6 +8,7 @@ from io import BytesIO
 from pydantic import ValidationError
 from starlette.applications import Starlette
 from starlette.config import Config
+from starlette.exceptions import HTTPException
 from starlette.responses import UJSONResponse
 from starlette.routing import Route, Mount
 from starlette.staticfiles import StaticFiles
@@ -58,28 +59,58 @@ async def index(request):
     buffer = BytesIO()
     template = 'index.html'
     ctx = {'request': request}
+    k1 = request.path_params['k1']
 
-    lnurl_endpoint = lnurl.encode(config('BASE_URL') + \
-        app.url_path_for('start', k1=request.path_params['k1']))
-    qr = qrcode.QRCode()
-    qr.add_data('lightning:' + lnurl_endpoint)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color='#343a40', back_color='white')
+    # check that the invite code exists
+    query = invites.select().where(invites.c.invite_code == k1)
+    res =  await database.fetch_one(query)
 
-    img.save(buffer, format='PNG')
+    if res:
+        if res['is_used'] == False:
+            lnurl_endpoint = lnurl.encode(config('BASE_URL') + \
+                app.url_path_for('start', k1=k1))
+            qr = qrcode.QRCode()
+            qr.add_data('lightning:' + lnurl_endpoint)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color='#343a40', back_color='white')
 
-    ctx['lnurl'] = lnurl_endpoint
-    ctx['lnurl_imagedata'] = base64.b64encode(buffer.getvalue()).decode()
+            img.save(buffer, format='PNG')
 
-    return templates.TemplateResponse(template, ctx)
+            ctx['lnurl'] = lnurl_endpoint
+            ctx['lnurl_imagedata'] = base64.b64encode(buffer.getvalue()).decode()  # noqa
+
+            return templates.TemplateResponse(template, ctx)
+        else:
+            raise HTTPException(status_code=410)
+    else:
+        raise HTTPException(status_code=404)
 
 async def start(request):
-    return UJSONResponse({
-        'callback': request.url_for("connect"),
-        'k1': request.path_params['k1'],
-        'uri': config('NODE_URI'),
-        'tag': 'channelRequest'
-    })
+    k1 = request.path_params['k1']
+
+    query = invites.select().where(invites.c.invite_code == k1)
+    res = await database.fetch_one(query)
+
+    if res:
+        # even though it could be skipped, we want to ensure the invite code
+        # is valid before revealing any information
+        if res['is_used'] == False:
+            return UJSONResponse({
+                'callback': request.url_for("connect"),
+                'k1': k1,
+                'uri': config('NODE_URI'),
+                'tag': 'channelRequest'
+            })
+        else:
+            return UJSONResponse({
+                'status': 'ERROR',
+                'reason': 'this invite code has been used'
+            })
+    else:
+        return UJSONResponse({
+            'status': 'ERROR',
+            'reason': 'this invite code is invalid'
+        })
 
 async def connect(request):
     lnd_rpc = lnd_grpc.Client(
@@ -91,8 +122,8 @@ async def connect(request):
         req = ChannelOpenRequest(**request.query_params)
 
         try:
-            q = invites.select().where(invites.c.invite_code == req.k1)
-            res = await database.fetch_one(q)
+            query = invites.select().where(invites.c.invite_code == req.k1)
+            res = await database.fetch_one(query)
 
             if res:
                 if res['is_used'] == False:
@@ -115,12 +146,12 @@ async def connect(request):
                 else:
                     return UJSONResponse({
                         'status': 'ERROR',
-                        'reason': 'the invite code has been used'
+                        'reason': 'this invite code has been used'
                     })
             else:
                 return UJSONResponse({
                     'status': 'ERROR',
-                    'reason': 'the invite code is invalid'
+                    'reason': 'this invite code is invalid'
                 })
         except _MultiThreadedRendezvous as e:
             return UJSONResponse({
